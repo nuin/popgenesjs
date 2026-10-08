@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PopGeneS2 is a web-based population genetics simulation suite (28 modules) for educational and research purposes. Rewritten from the original VB.NET desktop app (preserved in `PopGene.S/` for reference).
+PopGeneS2 is a web-based population genetics simulation suite (32 simulation modules plus 7 theory pages) for educational and research purposes. Rewritten from the original VB.NET desktop app (preserved in `PopGene.S/` for reference).
 
 **Stack**: SvelteKit (Svelte 5 runes) + TypeScript (strict) + D3.js v7 + Vite
 
@@ -17,9 +17,14 @@ npm run preview      # Preview production build
 npm run check        # Type-check with svelte-check
 npm run check:watch  # Type-check in watch mode
 npm run deploy       # Build and deploy to Cloudflare Pages
+npm test             # Vitest in watch mode
+npm run test:run     # Vitest single run
+npm run test:coverage                      # Coverage (v8), scoped to src/lib/sim/
+npx vitest run src/lib/sim/__tests__/drift.test.ts   # Single test file
+npx vitest run -t "Wright-Fisher"          # Tests matching a name
 ```
 
-No test framework is currently configured.
+Tests live in `src/lib/sim/__tests__/` (node environment) and are scientific-validation tests: they check that sim output matches population-genetics theory (expected heterozygosity decay, HWE proportions, etc.). Sims use unseeded `Math.random()`, so stochastic tests assert on averages over many replicates with tolerances rather than exact values.
 
 ## Architecture
 
@@ -52,6 +57,15 @@ Each route page follows a consistent pattern:
 2. `run()` calls the simulation function with current state
 3. `reset()` restores defaults and clears data
 4. Render via `SimLayout` with `{#snippet controls()}` and `{#snippet chart()}`
+
+### Saved Runs
+
+`src/lib/stores/runs.ts` is a localStorage-backed store (key `popgenes-runs`, max 20 runs per module). Pages that pass `moduleKey` to `SimLayout` get a "Saved runs" button that opens `RunsPanel`; visible saved runs are overlaid on the chart, and `src/lib/utils/export.ts` exports them as CSV/JSON.
+
+### Pages That Don't Follow the Pattern
+
+- `/theory/*` pages use `TheoryLayout` and contain their own inline D3 diagrams and mini-simulations instead of `src/lib/sim/`.
+- `/drift/bottleneck` and `/drift/founder` are standalone animated pages (own D3 code, own theme toggle) and don't use `SimLayout`.
 
 ### Component Hierarchy
 
@@ -95,21 +109,24 @@ Most sim files match their route name, but some don't:
 - `fstats.ts` → `/gene-flow/f-statistics`
 - `migration.ts` → `/gene-flow/continent-island` and `/gene-flow/island-island`
 - `mating.ts` → `/mating/autosomal` and `/mating/x-linked`
+- `dominance.ts` → `/selection/dominance`
+- `molpopgen.ts` + `coalescent.ts` → `/advanced/molecular`
 
 ### Import Aliases
 
 `$lib` resolves to `src/lib/` (configured by SvelteKit). All internal imports use this alias.
 
-### Module Categories (28 total)
+### Module Categories
 
 - **Frequencies**: De Finetti, Genotype Frequencies, Chi-Square HWE
-- **Drift**: Pure, +Selection, +Mutation, Combined, Markov Chain, Heterozygosity
+- **Drift**: Pure, Bottleneck, Founder, +Selection, +Mutation, Combined, Markov Chain, Heterozygosity
 - **Mating**: Autosomal, X-Linked, Assortative, Assortative Matrix
 - **Mutation**: Two-Way, Irreversible, Neutral, Muller's Ratchet
-- **Selection**: Natural Selection, Frequency-Dependent
-- **Gene Flow**: Continent-Island, Island-Island, F-Statistics, Wahlund
+- **Selection**: Natural Selection, Dominance, Frequency-Dependent
+- **Gene Flow**: Continent-Island, Island-Island, F-Statistics, Stepping-Stone, Wahlund
 - **Linkage**: Disequilibrium, Magnitude, Histogram
 - **Advanced**: Molecular Pop Gen, QTL
+- **Theory** (`/theory/*`): Hardy-Weinberg, Drift, Selection, Mutation, Mating, Gene Flow, Linkage
 
 ## Deployment
 
@@ -121,7 +138,7 @@ Most sim files match their route name, but some don't:
 
 ### How It Works
 
-The SvelteKit adapter-static prerenders all 28 routes into static HTML at build time. A `200.html` SPA fallback is generated for any routes that can't be prerendered. Cloudflare Pages serves the `build/` directory as static files.
+The SvelteKit adapter-static prerenders every route (`prerender = true` in `src/routes/+layout.ts`) into static HTML at build time. A `200.html` SPA fallback is generated for any routes that can't be prerendered. Cloudflare Pages serves the `build/` directory as static files.
 
 Configuration files:
 - `svelte.config.js` — adapter-static with `fallback: '200.html'`, output to `build/`
